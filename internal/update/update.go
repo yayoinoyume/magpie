@@ -31,6 +31,7 @@ import (
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/source"
 )
 
 // Site is magpie's home; its /api/latest is the update feed.
@@ -82,7 +83,7 @@ func LatestIn(ctx context.Context, lang string) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.Do(req)
+	res, err := source.Do(client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +587,7 @@ func fetch(ctx context.Context, a Asset, path string) error {
 	if err != nil {
 		return err
 	}
-	res, err := client.Do(req)
+	res, err := source.Do(client, req)
 	if err != nil {
 		return err
 	}

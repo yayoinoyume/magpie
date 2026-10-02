@@ -27,6 +27,7 @@ import (
 
 	"github.com/yetone/magpie/internal/netproxy"
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/source"
 )
 
 // CLI is what magpie knows of an agent's command-line program.
@@ -427,7 +428,7 @@ func npmLatest(pkg string) (string, error) {
 	req, _ := http.NewRequest("GET", npmRegistry+pkg+"/latest", nil)
 	req.Header.Set("User-Agent", "magpie")
 	req.Header.Set("Accept", "application/json")
-	resp, err := c.Do(req)
+	resp, err := source.Do(c, req)
 	if err != nil {
 		return "", err
 	}

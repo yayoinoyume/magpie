@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/proc"
+	"github.com/yetone/magpie/internal/source"
 )
 
 // rtk's version is kept up to date the way it was installed: Homebrew's
@@ -70,7 +71,7 @@ func latestRTK() (string, error) {
 	}
 	req, _ := http.NewRequest("HEAD", rtkReleases, nil)
 	req.Header.Set("User-Agent", "magpie")
-	if resp, err := c.Do(req); err == nil {
+	if resp, err := source.Do(c, req); err == nil {
 		resp.Body.Close()
 		if _, tag, ok := strings.Cut(resp.Header.Get("Location"), "/releases/tag/"); ok {
 			if m := semver.FindStringSubmatch(tag); m != nil {
@@ -82,7 +83,7 @@ func latestRTK() (string, error) {
 	req.Header.Set("User-Agent", "magpie")
 	withGitHubToken(req)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := c.Do(req)
+	resp, err := source.Do(c, req)
 	if err != nil {
 		return "", err
 	}

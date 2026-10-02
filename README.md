@@ -1055,6 +1055,37 @@ credentials change before sending. Redirects are not followed.
 Backups without keys omit OTLP headers; restoring one preserves this machine's
 headers only when the collector endpoint is unchanged.
 
+## Mirrors
+
+Mirror fallback is off by default. Set `MAGPIE_MIRRORS=on` to use it. When
+it is on, the official source is tried first; a mirror is only tried after
+a network error, HTTP 429, HTTP 5xx, or GitHub's rate-limit 403. The
+defaults are `registry.npmmirror.com` for npm and `gh-proxy.com` for
+GitHub. `MAGPIE_NPM_REGISTRY` and `MAGPIE_GITHUB_MIRROR` replace them.
+
+Only two downloads are checked against a checksum that does not come from
+the mirror: Magpie's own update assets (their SHA-256 comes from the
+unmirrored update feed) and Bun's zip. Bun's default version carries its
+SHA-256s in the code, so it can be downloaded through a mirror even when
+Bun's official `SHASUMS256.txt` is unreachable; a newer Bun still needs
+that official file. Skill tarballs and the plugin-market registry always
+use the official source. npm metadata, plugin README/search results and
+version checks are not checksummed; a mirror can report a different
+version.
+
+The official source and a mirror share one request budget, so a hanging
+official source doesn't make the whole wait twice as long.
+
+Requests that carry credentials, such as an `Authorization`, `Cookie`,
+API key, or URL userinfo/query token, never use a mirror; they go to the
+official source alone.
+
+```sh
+MAGPIE_MIRRORS=on \
+MAGPIE_NPM_REGISTRY=https://registry.example.com \
+MAGPIE_GITHUB_MIRROR=https://gh.example magpie serve
+```
+
 ## Files
 
 - `~/.config/magpie/profiles.json` — saved profiles

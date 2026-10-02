@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/source"
 	"gopkg.in/yaml.v3"
 )
 
@@ -509,7 +510,7 @@ func fetch(src Source) (string, error) {
 	req, _ := http.NewRequest("GET", tarballURL(src.Repo, src.Ref), nil)
 	req.Header.Set("User-Agent", "magpie")
 	c := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := c.Do(req)
+	resp, err := source.DoOfficial(c, req)
 	if err != nil {
 		return "", fmt.Errorf("couldn't reach GitHub: %w", err)
 	}
