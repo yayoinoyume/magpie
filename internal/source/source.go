@@ -144,7 +144,7 @@ func do(c *http.Client, req *http.Request, urls []string) (*http.Response, error
 		var cancel context.CancelFunc
 		var stop func() bool
 		if len(urls) > 1 {
-			ctx, cancelCandidate, stopCandidate := candidateContext(r.Context(), c)
+			ctx, cancelCandidate, stopCandidate := candidateContext(r.Context(), c, i < len(urls)-1)
 			if ctx != r.Context() {
 				r = r.WithContext(ctx)
 				cancel = cancelCandidate
@@ -174,11 +174,15 @@ func do(c *http.Client, req *http.Request, urls []string) (*http.Response, error
 	return nil, last
 }
 
-// candidateContext bounds one source's try to half of the request's
+// candidateContext bounds a source's try to half of the request's
 // remaining budget, so an official source that hangs doesn't make the
-// mirror's try double the whole wait. The timer only guards the wait for
-// response headers; stop leaves the response's context alive for its body.
-func candidateContext(ctx context.Context, c *http.Client) (context.Context, context.CancelFunc, func() bool) {
+// next one's try double the whole wait. The last source keeps all of
+// the time left. The timer only guards the wait for response headers;
+// stop leaves the response's context alive for its body.
+func candidateContext(ctx context.Context, c *http.Client, more bool) (context.Context, context.CancelFunc, func() bool) {
+	if !more {
+		return ctx, func() {}, func() bool { return false }
+	}
 	var d time.Duration
 	if deadline, ok := ctx.Deadline(); ok {
 		d = time.Until(deadline) / 2

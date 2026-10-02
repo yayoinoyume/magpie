@@ -87,8 +87,6 @@ func stubTry(t *testing.T, f func(exe, v string) error) {
 	t.Cleanup(func() { tryBun = old })
 }
 
-// A Bun out two days is taken: downloaded, its checksum checked, tried,
-// and run from then on; the one before it is kept to fall back on.
 func TestBunDefaultSums(t *testing.T) {
 	for _, target := range []string{
 		"bun-darwin-aarch64",
@@ -106,6 +104,8 @@ func TestBunDefaultSums(t *testing.T) {
 	}
 }
 
+// A Bun out two days is taken: downloaded, its checksum checked, tried,
+// and run from then on; the one before it is kept to fall back on.
 func TestCheckBunTakesASettledRelease(t *testing.T) {
 	bunHome(t, "9.9.9", time.Now().Add(-49*time.Hour))
 	asked := bunReleases(t, []byte("new bun"))
