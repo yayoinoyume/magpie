@@ -17,6 +17,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/yetone/magpie/internal/source"
 )
 
 // ---- which skills GitHub has changed --------------------------------------
@@ -116,7 +118,7 @@ func lastCommit(src Source) (*commit, error) {
 		req.Header.Set("If-None-Match", had.etag)
 	}
 	c := &http.Client{Timeout: 20 * time.Second}
-	resp, err := c.Do(req)
+	resp, err := source.Do(c, req)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't reach GitHub: %w", err)
 	}

@@ -37,6 +37,15 @@ func bunReleases(t *testing.T, exe []byte) *atomic.Int32 {
 	w.Write(exe)
 	zw.Close()
 	sum := sha256.Sum256(zb.Bytes())
+	oldSum, hadSum := bunSums[target+".zip"]
+	bunSums[target+".zip"] = hex.EncodeToString(sum[:])
+	t.Cleanup(func() {
+		if hadSum {
+			bunSums[target+".zip"] = oldSum
+		} else {
+			delete(bunSums, target+".zip")
+		}
+	})
 	var asked atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -80,6 +89,23 @@ func stubTry(t *testing.T, f func(exe, v string) error) {
 
 // A Bun out two days is taken: downloaded, its checksum checked, tried,
 // and run from then on; the one before it is kept to fall back on.
+func TestBunDefaultSums(t *testing.T) {
+	for _, target := range []string{
+		"bun-darwin-aarch64",
+		"bun-darwin-x64",
+		"bun-linux-aarch64",
+		"bun-linux-x64-baseline",
+		"bun-windows-x64-baseline",
+	} {
+		if got := bunChecksum(BunVersion, target); len(got) != 64 {
+			t.Fatalf("%s checksum = %q", target, got)
+		}
+	}
+	if got := bunChecksum("9.9.9", "bun-linux-x64-baseline"); got != "" {
+		t.Fatalf("a newer Bun used the built-in checksum: %q", got)
+	}
+}
+
 func TestCheckBunTakesASettledRelease(t *testing.T) {
 	bunHome(t, "9.9.9", time.Now().Add(-49*time.Hour))
 	asked := bunReleases(t, []byte("new bun"))
@@ -205,5 +231,60 @@ func TestHostFallsBackWhenTheNewBunDies(t *testing.T) {
 	}
 	if s := readBunState(); BunInUse() != BunVersion || len(s.Bad) != 1 || s.Bad[0] != "9.9.9" {
 		t.Fatalf("in use %s, state %+v", BunInUse(), s)
+	}
+}
+
+func TestDownloadBunDefaultSkipsOfficialSums(t *testing.T) {
+	target, err := bunTarget()
+	if err != nil {
+		t.Skip(err)
+	}
+	var zb bytes.Buffer
+	zw := zip.NewWriter(&zb)
+	h := &zip.FileHeader{Name: target + "/" + bunExe(), Method: zip.Deflate}
+	h.SetMode(0o755)
+	w, _ := zw.CreateHeader(h)
+	w.Write([]byte("bun"))
+	zw.Close()
+	sum := sha256.Sum256(zb.Bytes())
+
+	var sumsAsked atomic.Int32
+	var zipAsked atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/SHASUMS256.txt"):
+			sumsAsked.Add(1)
+			http.Error(w, "must not ask", http.StatusInternalServerError)
+		case strings.HasSuffix(r.URL.Path, "/"+target+".zip"):
+			zipAsked.Add(1)
+			w.Write(zb.Bytes())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldRelease := bunRelease
+	bunRelease = srv.URL
+	defer func() { bunRelease = oldRelease }()
+
+	oldSum, hadSum := bunSums[target+".zip"]
+	bunSums[target+".zip"] = hex.EncodeToString(sum[:])
+	defer func() {
+		if hadSum {
+			bunSums[target+".zip"] = oldSum
+		} else {
+			delete(bunSums, target+".zip")
+		}
+	}()
+
+	exe := filepath.Join(t.TempDir(), bunExe())
+	if err := downloadBun(context.Background(), BunVersion, exe); err != nil {
+		t.Fatal(err)
+	}
+	if sumsAsked.Load() != 0 {
+		t.Fatalf("SHASUMS256.txt asked %d times", sumsAsked.Load())
+	}
+	if zipAsked.Load() != 1 {
+		t.Fatalf("zip asked %d times", zipAsked.Load())
 	}
 }

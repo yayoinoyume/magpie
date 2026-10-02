@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/yetone/magpie/internal/appdir"
+	"github.com/yetone/magpie/internal/source"
 )
 
 // The plugin market: the plugins magpie suggests, from the community
@@ -168,7 +169,7 @@ func Market(ctx context.Context) []Listing {
 	}
 	if src != "off" {
 		c, cancel := context.WithTimeout(ctx, 6*time.Second)
-		b, err := fetchJSON(c, src, 1<<20)
+		b, err := fetchJSONOfficial(c, src, 1<<20)
 		cancel()
 		if err == nil {
 			if l, err := parseMarket(b); err == nil {
@@ -192,13 +193,26 @@ func Market(ctx context.Context) []Listing {
 }
 
 func fetchJSON(ctx context.Context, u string, limit int64) ([]byte, error) {
+	return fetchJSONFrom(ctx, u, limit, true)
+}
+
+func fetchJSONOfficial(ctx context.Context, u string, limit int64) ([]byte, error) {
+	return fetchJSONFrom(ctx, u, limit, false)
+}
+
+func fetchJSONFrom(ctx context.Context, u string, limit int64, mirror bool) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "magpie")
 	req.Header.Set("Accept", "application/json")
-	res, err := http.DefaultClient.Do(req)
+	var res *http.Response
+	if mirror {
+		res, err = source.Do(http.DefaultClient, req)
+	} else {
+		res, err = source.DoOfficial(http.DefaultClient, req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +425,7 @@ func Search(ctx context.Context, q string) ([]Hit, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	v := url.Values{"text": {q + " opencode"}, "size": {"30"}}
-	b, err := fetchJSON(ctx, "https://registry.npmjs.org/-/v1/search?"+v.Encode(), 4<<20)
+	b, err := fetchJSON(ctx, npmRegistry+"/-/v1/search?"+v.Encode(), 4<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +488,7 @@ func Readme(ctx context.Context, name string) (Page, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
-	b, err := fetchJSON(ctx, "https://registry.npmjs.org/"+npmPath(name), 32<<20)
+	b, err := fetchJSON(ctx, npmRegistry+"/"+npmPath(name), 32<<20)
 	if err != nil {
 		return Page{}, err
 	}

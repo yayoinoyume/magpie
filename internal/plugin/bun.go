@@ -19,12 +19,31 @@ import (
 	"sync"
 
 	"github.com/yetone/magpie/internal/catalog"
+	"github.com/yetone/magpie/internal/source"
 )
 
 // BunVersion is the Bun magpie downloads to run plugins with the first
 // time one is needed, and the oldest it runs them on: newer releases are
 // taken as they come (see CheckBun).
 const BunVersion = "1.3.14"
+
+// bunSums are the SHA-256s of BunVersion's builds, from Bun's own
+// SHASUMS256.txt. They let the default Bun be downloaded through a mirror
+// when Bun's GitHub release page can't be reached.
+var bunSums = map[string]string{
+	"bun-darwin-aarch64.zip":       "d8b96221828ad6f97ac7ac0ab7e95872341af763001e8803e8267652c2652620",
+	"bun-darwin-x64.zip":           "4183df3374623e5bab315c547cfa0974533cd457d86b73b639f7a87974cd6633",
+	"bun-linux-aarch64.zip":        "a27ffb63a8310375836e0d6f668ae17fa8d8d18b88c37c821c65331973a19a3b",
+	"bun-linux-x64-baseline.zip":   "a063908ae08b7852ca10939bbdc6ceed3ddabce8fb9402dce83d65d73b36e6c7",
+	"bun-windows-x64-baseline.zip": "538f9c846355d9e847b2671bc00c47da4229a0befb24df3282b739770f3b475f",
+}
+
+func bunChecksum(version, target string) string {
+	if version != BunVersion {
+		return ""
+	}
+	return bunSums[target+".zip"]
+}
 
 // bunRelease is where Bun's releases are; a var for tests.
 var bunRelease = "https://github.com/oven-sh/bun/releases/download"
@@ -98,20 +117,22 @@ func downloadBun(ctx context.Context, version, exe string) error {
 		return err
 	}
 	base := bunRelease + "/bun-v" + version + "/"
-	sums, err := getURL(ctx, base+"SHASUMS256.txt", 1<<20)
-	if err != nil {
-		return err
-	}
-	want := ""
-	sc := bufio.NewScanner(strings.NewReader(string(sums)))
-	for sc.Scan() {
-		f := strings.Fields(sc.Text())
-		if len(f) == 2 && f[1] == target+".zip" {
-			want = f[0]
-		}
-	}
+	want := bunChecksum(version, target)
 	if want == "" {
-		return fmt.Errorf("%s.zip isn't in the release's checksums", target)
+		sums, err := getURLOfficial(ctx, base+"SHASUMS256.txt", 1<<20)
+		if err != nil {
+			return err
+		}
+		sc := bufio.NewScanner(strings.NewReader(string(sums)))
+		for sc.Scan() {
+			f := strings.Fields(sc.Text())
+			if len(f) == 2 && f[1] == target+".zip" {
+				want = f[0]
+			}
+		}
+		if want == "" {
+			return fmt.Errorf("%s.zip isn't in the release's checksums", target)
+		}
 	}
 	z, err := getURL(ctx, base+target+".zip", 200<<20)
 	if err != nil {
@@ -156,11 +177,24 @@ func downloadBun(ctx context.Context, version, exe string) error {
 }
 
 func getURL(ctx context.Context, url string, limit int64) ([]byte, error) {
+	return getURLFrom(ctx, url, limit, true)
+}
+
+func getURLOfficial(ctx context.Context, url string, limit int64) ([]byte, error) {
+	return getURLFrom(ctx, url, limit, false)
+}
+
+func getURLFrom(ctx context.Context, url string, limit int64, mirror bool) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	res, err := http.DefaultClient.Do(req)
+	var res *http.Response
+	if mirror {
+		res, err = source.Do(http.DefaultClient, req)
+	} else {
+		res, err = source.DoOfficial(http.DefaultClient, req)
+	}
 	if err != nil {
 		return nil, err
 	}

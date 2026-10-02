@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/yetone/magpie/internal/source"
 	"gopkg.in/yaml.v3"
 )
 
@@ -459,7 +460,7 @@ func fetch(src Source) (string, error) {
 	req, _ := http.NewRequest("GET", tarballURL(src.Repo, src.Ref), nil)
 	req.Header.Set("User-Agent", "magpie")
 	c := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := c.Do(req)
+	resp, err := source.DoOfficial(c, req)
 	if err != nil {
 		return "", fmt.Errorf("couldn't reach GitHub: %w", err)
 	}
@@ -1106,7 +1107,7 @@ type FoundSkill struct {
 	// very same files (CC Switch copies a skill into each agent): brought
 	// in, they get the library's in its place
 	Copies []string `json:"copies,omitempty"`
-	Link        string   `json:"link,omitempty"`   // where it really is, when it's a link
+	Link   string   `json:"link,omitempty"` // where it really is, when it's a link
 	// Shared is its entry in the user-wide ~/.agents/skills, when it is
 	// there; the agents that have it are those whose entry is a link (or a
 	// junction) to the very same folder
