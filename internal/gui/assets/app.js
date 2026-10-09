@@ -8265,6 +8265,19 @@ function drawEditor(p, presetID) {
     ed.append(...field(t("Team project ID"), proj, t("Only for a key on a team's GLM Coding Plan: both are in {p}'s console, under the team's organization and project. With them the Usage page shows the team's 5-hour and weekly windows.", { p: pr?.name || p.name })));
   }
 
+  // the saved Secret is never shown back
+  if (pr?.volcengine) {
+    if (draft.accessKeyID === undefined) draft.accessKeyID = p?.accessKeyID || "";
+    const ak = input(draft.accessKeyID, t("AccessKey ID"));
+    ak.classList.add("volc-ak");
+    ak.oninput = () => { draft.accessKeyID = ak.value; };
+    const sk = input("", p?.accessSecretSet ? t("Set · type a new Secret to replace it") : t("Secret"), "password");
+    sk.classList.add("volc-sk");
+    sk.oninput = () => { draft.secretAccessKey = sk.value; };
+    ed.append(...field(t("AccessKey ID"), ak, ""));
+    ed.append(...field(t("Secret"), sk, t("The account's control-plane credentials (Volcengine console → Access Key), not the Ark inference API key. They are used only to read this plan's usage.")));
+  }
+
   // a relay that offers several regional endpoints, or a vendor whose plans
   // are served at their own: one selector, and the provider's base URLs follow it
   let refreshEndpoints = () => {}, onRegion = () => {};
@@ -8501,6 +8514,12 @@ function drawEditor(p, presetID) {
       const org = (draft.zhipuTeam.org || "").trim(), project = (draft.zhipuTeam.project || "").trim();
       if (!org !== !project) { ed.querySelector(org ? ".team-project" : ".team-org")?.focus({ preventScroll: true }); return editorError(t("Team plan: give both the organization ID and the project ID"), "warn"); }
       body.zhipuTeam = org ? { org, project } : {};
+    }
+    if (pr?.volcengine) {
+      body.accessKeyID = (draft.accessKeyID || "").trim();
+      // the Secret is written only when a new one is typed; a blank field
+      // keeps the saved one
+      if ((draft.secretAccessKey || "").trim()) body.secretAccessKey = draft.secretAccessKey.trim();
     }
     if (isNew && custom && !body.name) { name.focus(); return editorError(t("Give it a name"), "warn"); }
     if (isNew && custom && !body.chat && !body.anthropic && !body.responses && !body.decide) { url.focus(); return editorError(t("A base URL is needed"), "warn"); }

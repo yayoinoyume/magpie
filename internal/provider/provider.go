@@ -51,6 +51,11 @@ type Provider struct {
 	Preset string   `json:"preset,omitempty"` // preset this was created from, if any
 	Key    string   `json:"key"`              // API key, as typed by the user
 
+	// Volcengine's control-plane credentials, for its plan's usage
+	// (volcengine_usage.go); not the inference API key in Key.
+	AccessKeyID     string `json:"accessKeyID,omitempty"`
+	SecretAccessKey string `json:"secretAccessKey,omitempty"`
+
 	// KeyName names the key in use, and Keys are the provider's other
 	// accounts: keys saved to switch to (see keys.go).
 	KeyName string       `json:"keyName,omitempty"`

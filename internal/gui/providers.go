@@ -114,6 +114,10 @@ type providerJSON struct {
 	// a Zhipu or Z.ai key's team, for a team's GLM Coding Plan (#236):
 	// set, if empty, for those providers alone, which the editor asks it of
 	ZhipuTeam *provider.ZhipuTeam `json:"zhipuTeam,omitempty"`
+	// AccessKeyID and AccessSecretSet go to the editor; the Secret itself
+	// never does, as a key isn't.
+	AccessKeyID     string `json:"accessKeyID,omitempty"`
+	AccessSecretSet bool   `json:"accessSecretSet,omitempty"`
 	// ModelTest is why its models can't each be sent a test request, ""
 	// when they can (provider.ModelTest): the editor says so on a chip's
 	// right-click rather than offer no menu
@@ -293,6 +297,8 @@ type presetJSON struct {
 	// ZhipuTeam: a key of it may be on a team's GLM Coding Plan, whose
 	// organization and project the editor offers to take
 	ZhipuTeam bool `json:"zhipuTeam,omitempty"`
+	// Volcengine: the editor offers the control-plane AccessKey ID and Secret
+	Volcengine bool `json:"volcengine,omitempty"`
 	// a partner's tagline by language, and the languages it is listed in
 	Notes map[string]string `json:"notes,omitempty"`
 	Langs []string          `json:"langs,omitempty"`
@@ -448,6 +454,7 @@ func providerInfo(p provider.Provider, agents []agentUse) providerJSON {
 			*out.ZhipuTeam = *p.ZhipuTeam
 		}
 	}
+	out.AccessKeyID, out.AccessSecretSet = p.AccessKeyID, p.SecretAccessKey != ""
 	if site := provider.StepFunSite(p); site != "" {
 		out.StepPlan = &stepPlanJSON{site, provider.StepFunSignedIn(site), provider.StepFunSignInURL(site), provider.StepFunBookmarklet()}
 	}
@@ -659,7 +666,7 @@ func providersState() providersJSON {
 	}
 	for _, pr := range provider.Presets() {
 		team := provider.TakesZhipuTeam(provider.Provider{Chat: pr.Chat, Responses: pr.Responses, Anthropic: pr.Anthropic})
-		s.Presets = append(s.Presets, presetJSON{PresetDef: pr, Added: have[pr.ID], ZhipuTeam: team})
+		s.Presets = append(s.Presets, presetJSON{PresetDef: pr, Added: have[pr.ID], ZhipuTeam: team, Volcengine: pr.ID == "volcengine"})
 	}
 	cat := provider.Catalog()
 	s.Gateway = gatewayJSON{URL: gateway.URL(), Open: gateway.OpenToAnyone(), Models: len(cat), Calls: []gateway.Call{}, Groups: []gwGroupJSON{}}
@@ -1013,6 +1020,7 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 			if pr, err := provider.FromPreset(in.Preset); err == nil && in.Chat == "" && in.Responses == "" && in.Anthropic == "" && in.Gemini == "" {
 				pr.Key, pr.Models, pr.Fallback, pr.Headers, pr.BalanceToken, pr.Contexts = in.Key, in.Models, in.Fallback, in.Headers, in.BalanceToken, in.Contexts
 				pr.ZhipuTeam = in.ZhipuTeam
+				pr.AccessKeyID, pr.SecretAccessKey = in.AccessKeyID, in.SecretAccessKey
 				pr.Searches = in.Searches
 				pr.PinUpstream = in.PinUpstream
 				pr.Unredacted = in.Unredacted
@@ -1146,6 +1154,11 @@ func providerRoutes(mux *http.ServeMux, w Windows) {
 				// a Zhipu key's team likewise: {} clears it
 				if in.ZhipuTeam == nil && old != nil {
 					in.ZhipuTeam = old.ZhipuTeam
+				}
+				// a Volcengine Secret is written only when the editor sent a
+				// new one; a save that left it blank keeps the saved one
+				if in.SecretAccessKey == "" && old != nil {
+					in.SecretAccessKey = old.SecretAccessKey
 				}
 				if in.Key == "" && old != nil {
 					in.Key = old.Key
