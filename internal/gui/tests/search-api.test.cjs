@@ -25,6 +25,7 @@ const vendors = [
   { id: "firecrawl", name: "Firecrawl", keysURL: "https://www.firecrawl.dev/app/api-keys", base: "https://api.firecrawl.dev" },
   { id: "you", name: "You.com", keysURL: "https://you.com/platform", base: "https://ydc-index.io", keyOptional: true },
   { id: "searxng", name: "SearXNG", needURL: true },
+  { id: "deepseek", name: "DeepSeek Search", keysURL: "https://platform.deepseek.com/api_keys", base: "https://api.deepseek.com" },
 ];
 const words = {
   en: { head: "Web search", name: "Search APIs", none: "No provider can search", add: "Add", remove: "Remove", refused: "Brave Search: 401 bad key", show: "Show", hide: "Hide", copy: "Copy",

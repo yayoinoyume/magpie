@@ -1,8 +1,9 @@
 package provider
 
 // Search APIs answer a model's web search when no provider can (#419):
-// Tavily, Brave Search, Exa, Firecrawl, You.com, a SearXNG of the user's. They are
-// kept in providers.json beside the providers, their keys with theirs.
+// Tavily, Brave Search, Exa, Firecrawl, You.com, a SearXNG of the user's,
+// DeepSeek's Search API. They are kept in providers.json beside the
+// providers, their keys with theirs.
 
 import (
 	"fmt"
@@ -60,6 +61,7 @@ var SearchVendors = []SearchVendor{
 	{ID: "firecrawl", Name: "Firecrawl", Base: "https://api.firecrawl.dev", KeysURL: "https://www.firecrawl.dev/app/api-keys"},
 	{ID: "you", Name: "You.com", Base: "https://ydc-index.io", KeysURL: "https://you.com/platform", KeyOptional: true},
 	{ID: "searxng", Name: "SearXNG", KeyOptional: true},
+	{ID: "deepseek", Name: "DeepSeek Search", Base: "https://api.deepseek.com", KeysURL: "https://platform.deepseek.com/api_keys"},
 }
 
 // SearchVendorOf is the vendor by its id.

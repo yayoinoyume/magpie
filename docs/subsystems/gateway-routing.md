@@ -413,8 +413,11 @@ answers as that API does (#1580). Empty is the vendor's own
 (`SearchVendor.Base`); SearXNG has none, so its URL is required. `check`
 takes only an `http://` or `https://` URL with a host and no `?query` or
 `#fragment`, since `askSearchAPI` puts the vendor's path after it
-(`/search`, `/res/v1/web/search`, `/v2/search`) with the slash at its end
-trimmed. The request goes through the gateway's client, so it follows
+(`/search`, `/res/v1/web/search`, `/v2/search`, `/v1/tools/search`)
+with the slash at its end trimmed. DeepSeek takes a query of at most 128
+characters, so the query is cut to that (`clipQuery`), and `need_content`
+asks for each page's text; its search is charged per call either way. The
+request goes through the gateway's client, so it follows
 magpie's proxy settings as the vendor's own address does
 (`TestSearchFollowsTheSearchersProxy`).
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/yetone/magpie/internal/provider"
 )
@@ -20,7 +21,9 @@ import (
 type searchAPIs struct {
 	*httptest.Server
 	mu     sync.Mutex
-	asked  []string // vendor: query
+	asked  []string        // vendor: query
+	counts map[string]int  // vendor: the count a search asked for
+	flags  map[string]bool // vendor: whether it asked for the pages' content
 	broken bool
 }
 
@@ -29,7 +32,9 @@ func newSearchAPIs(t *testing.T) *searchAPIs {
 	f.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		var q struct {
-			Query string `json:"query"`
+			Query       string `json:"query"`
+			Count       int    `json:"count"`
+			NeedContent bool   `json:"need_content"`
 		}
 		json.Unmarshal(b, &q)
 		vendor, key := "", ""
@@ -42,19 +47,32 @@ func newSearchAPIs(t *testing.T) *searchAPIs {
 			vendor, key = "exa", r.Header.Get("X-Api-Key")
 		case r.Method == http.MethodPost && r.URL.Path == "/firecrawl/v2/search":
 			vendor, key = "firecrawl", r.Header.Get("Authorization")
+		case r.Method == http.MethodPost && r.URL.Path == "/deepseek/v1/tools/search":
+			vendor, key = "deepseek", r.Header.Get("Authorization")
+			var body struct {
+				Query       string `json:"query"`
+				Count       int    `json:"count"`
+				NeedContent bool   `json:"need_content"`
+			}
+			json.Unmarshal(b, &body)
+			q.Query, q.Count, q.NeedContent = body.Query, body.Count, body.NeedContent
 		case r.Method == http.MethodGet && r.URL.Path == "/searxng/search" && r.URL.Query().Get("format") == "json":
 			vendor, key, q.Query = "searxng", "none", r.URL.Query().Get("q")
 		default:
 			http.NotFound(w, r)
 			return
 		}
-		want := map[string]string{"tavily": "Bearer tvly-k", "brave": "brave-k", "exa": "exa-k", "firecrawl": "Bearer fc-k", "searxng": "none"}[vendor]
+		want := map[string]string{"tavily": "Bearer tvly-k", "brave": "brave-k", "exa": "exa-k", "firecrawl": "Bearer fc-k", "deepseek": "Bearer ds-k", "searxng": "none"}[vendor]
 		if key != want {
 			http.Error(w, `{"error":"bad key `+key+`"}`, 401)
 			return
 		}
 		f.mu.Lock()
 		f.asked = append(f.asked, vendor+": "+q.Query)
+		if f.counts == nil {
+			f.counts, f.flags = map[string]int{}, map[string]bool{}
+		}
+		f.counts[vendor], f.flags[vendor] = q.Count, q.NeedContent
 		broken := f.broken
 		f.mu.Unlock()
 		if vendor == "tavily" && broken {
@@ -71,6 +89,8 @@ func newSearchAPIs(t *testing.T) *searchAPIs {
 			io.WriteString(w, `{"results":[{"title":"Go downloads","url":"https://go.dev/dl/","text":"Go 1.27.1 was released."}]}`)
 		case "firecrawl":
 			io.WriteString(w, `{"success":true,"data":{"web":[{"title":"Go downloads","url":"https://go.dev/dl/","description":"Download Go 1.27.1"}]}}`)
+		case "deepseek":
+			io.WriteString(w, `{"results":[{"rerank_score":2.4,"title":"Go downloads","url":"https://go.dev/dl/","snippet":"go1.27.1 is the latest release.","content":"Go 1.27.1 was released.","site_name":"go.dev"},{"title":"Go blog","url":"https://go.dev/blog/","snippet":"The Go blog has the release notes.","content":""}]}`)
 		case "searxng":
 			io.WriteString(w, `{"query":"x","results":[{"title":"Go downloads","url":"https://go.dev/dl/","content":"Go 1.27.1 is out"},{"title":"","url":""}]}`)
 		}
@@ -96,11 +116,27 @@ func TestSearchAPIsEachAsked(t *testing.T) {
 		{f.api("brave", "brave-k"), "The latest Go is 1.27.1"},
 		{f.api("exa", "exa-k"), "Go 1.27.1 was released."},
 		{f.api("firecrawl", "fc-k"), "Download Go 1.27.1"},
+		{f.api("deepseek", "ds-k"), ""},
 		{f.api("searxng", ""), "Go 1.27.1 is out"},
 	} {
 		pages, err := s.askSearchAPI(context.Background(), c.api, "latest go")
 		if err != nil {
 			t.Errorf("%s: %v", c.api.Vendor, err)
+			continue
+		}
+		if c.api.Vendor == "deepseek" {
+			// its first page carries the content it asked for; its second
+			// has none and is said by its snippet
+			if len(pages) != 2 {
+				t.Errorf("deepseek: %+v", pages)
+				continue
+			}
+			if pages[0].Text != "Go 1.27.1 was released." || pages[1].Text != "The Go blog has the release notes." {
+				t.Errorf("deepseek: %+v", pages)
+			}
+			if f.counts["deepseek"] != searchHits || !f.flags["deepseek"] {
+				t.Errorf("deepseek: count %d need_content %v", f.counts["deepseek"], f.flags["deepseek"])
+			}
 			continue
 		}
 		if len(pages) != 1 || pages[0].URL != "https://go.dev/dl/" || pages[0].Text != c.text || !strings.HasPrefix(pages[0].Title, "Go ") {
@@ -228,6 +264,21 @@ func TestWebSearchBySearchAPI(t *testing.T) {
 	}
 	if strings.Join(apis.asked, "|") != "tavily: latest go|searxng: latest go" {
 		t.Fatalf("asked %q", apis.asked)
+	}
+}
+
+// DeepSeek takes a query of at most 128 characters, counted in characters
+// rather than bytes.
+func TestClipQuery(t *testing.T) {
+	if got := clipQuery(strings.Repeat("a", 128)); got != strings.Repeat("a", 128) {
+		t.Errorf("128 kept: %q", got)
+	}
+	if got := clipQuery(strings.Repeat("a", 129)); len(got) != 128 {
+		t.Errorf("129 cut: %d", len(got))
+	}
+	long := strings.Repeat("搜索", 70) // 140 runes
+	if got := clipQuery(long); utf8.RuneCountInString(got) != 128 {
+		t.Errorf("CJK cut: %d runes", utf8.RuneCountInString(got))
 	}
 }
 

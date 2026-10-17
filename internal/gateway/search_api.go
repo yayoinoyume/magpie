@@ -226,6 +226,12 @@ func (s *Server) askSearchAPI(ctx context.Context, a provider.SearchAPI, query s
 		post("/v2/search", map[string]any{"query": query, "limit": searchHits})
 	case "searxng":
 		get("/search", url.Values{"q": {query}, "format": {"json"}})
+	case "deepseek":
+		// its tools/search API (api-docs.deepseek.com/zh-cn/guides/search):
+		// a query of 1-128 characters, a count of at most 50, 5 requests a
+		// second for the account. need_content asks for each page's text;
+		// the search itself is charged per call either way.
+		post("/v1/tools/search", map[string]any{"query": clipQuery(query), "count": searchHits, "need_content": true})
 	case "you":
 		// with a key, its Search API; without one, its free search (#1626),
 		// at an address of the user's own when one is set
@@ -315,6 +321,15 @@ func (s *Server) askSearchAPI(ctx context.Context, a provider.SearchAPI, query s
 	return pages, nil
 }
 
+// clipQuery is a query cut to DeepSeek's 128-character limit, at a rune.
+func clipQuery(s string) string {
+	if utf8.RuneCountInString(s) <= 128 {
+		return s
+	}
+	r := []rune(s)
+	return string(r[:128])
+}
+
 // readSearchAPI reads the pages out of a search API's reply.
 func readSearchAPI(vendor string, b []byte) ([]foundPage, error) {
 	if vendor == "you" {
@@ -325,11 +340,12 @@ func readSearchAPI(vendor string, b []byte) ([]foundPage, error) {
 		URL         string `json:"url"`
 		Content     string `json:"content"`
 		Description string `json:"description"`
+		Snippet     string `json:"snippet"` // deepseek's snippet, a page in a line
 		Text        string `json:"text"`
 		Markdown    string `json:"markdown"`
 	}
 	var out struct {
-		Results []result `json:"results"` // tavily, exa, searxng
+		Results []result `json:"results"` // tavily, exa, searxng, deepseek
 		Web     struct {
 			Results []result `json:"results"`
 		} `json:"web"` // brave
@@ -358,7 +374,7 @@ func readSearchAPI(vendor string, b []byte) ([]foundPage, error) {
 			continue
 		}
 		text := r.Content
-		for _, t := range []string{r.Text, r.Description, r.Markdown} {
+		for _, t := range []string{r.Text, r.Description, r.Snippet, r.Markdown} {
 			if text == "" {
 				text = t
 			}
