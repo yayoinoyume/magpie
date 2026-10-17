@@ -137,6 +137,16 @@ func TestSearchAPIsEachAsked(t *testing.T) {
 			if f.counts["deepseek"] != searchHits || !f.flags["deepseek"] {
 				t.Errorf("deepseek: count %d need_content %v", f.counts["deepseek"], f.flags["deepseek"])
 			}
+			// a query over its 128-character limit is cut before the ask
+			long := strings.Repeat("搜索", 70) // 140 runes
+			if _, err := s.askSearchAPI(context.Background(), c.api, long); err != nil {
+				t.Errorf("deepseek long query: %v", err)
+			}
+			for _, asked := range f.asked {
+				if strings.HasPrefix(asked, "deepseek: ") && utf8.RuneCountInString(strings.TrimPrefix(asked, "deepseek: ")) > 128 {
+					t.Errorf("deepseek: query past 128 runes: %q", asked)
+				}
+			}
 			continue
 		}
 		if len(pages) != 1 || pages[0].URL != "https://go.dev/dl/" || pages[0].Text != c.text || !strings.HasPrefix(pages[0].Title, "Go ") {
